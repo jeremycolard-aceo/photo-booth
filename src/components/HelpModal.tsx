@@ -1,5 +1,6 @@
 import React from 'react';
 import { HelpCircle, Award, Flame } from 'lucide-react';
+import { playClickSound } from '../utils/audio';
 
 interface HelpModalProps {
   isOpen: boolean;
@@ -15,7 +16,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
         
         {/* Close button */}
         <button
-          onClick={onClose}
+          onClick={() => { playClickSound(); onClose(); }}
           className="absolute top-4 right-4 text-slate-400 hover:text-slate-200 text-lg font-bold"
         >
           ✕
@@ -27,22 +28,22 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
             <HelpCircle className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-lg font-black text-slate-100">Règles & Survie Sociale</h3>
+            <h3 className="text-lg font-black text-slate-100">Règles & Solidarité</h3>
             <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
-              Guide de gestion de colocation sociale
+              Guide d'entraide de la colocation
             </p>
           </div>
         </div>
 
         {/* Content Area */}
-        <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-4 text-xs text-slate-300 mb-4">
+        <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-4 text-xs text-slate-300 mb-4 leading-relaxed">
           
           {/* Pitch */}
           <div className="bg-gradient-to-r from-violet-950/20 to-indigo-950/20 p-3 rounded-xl border border-violet-900/30">
-            <p className="leading-relaxed">
-              Bienvenue dans votre colocation ! Quatre colocataires en situation de vulnérabilité y cohabitent : 
+            <p>
+              Bienvenue dans votre colocation ! Quatre colocataires attachants y résident : 
               <strong> Marc, Lisa, Nico et Marie</strong>. 
-              Votre mission est de les aider à s'en sortir en gérant leurs besoins quotidiens sous forme de **Post-its** administratifs, médicaux ou matériels, avant que le **Timer de l'État** n'expire !
+              Leurs dossiers sont déjà déposés ! Votre objectif est de faire **décroître le compte à rebours de l'État vers 0** pour obtenir leur validation définitive et sécuriser la colocation !
             </p>
           </div>
 
@@ -50,86 +51,67 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
           <div>
             <h4 className="font-black text-slate-200 mb-1.5 flex items-center gap-1">
               <Flame className="w-3.5 h-3.5 text-amber-500" />
-              1. Résoudre les besoins (Post-its)
+              1. Gérer les Post-its
             </h4>
-            <ul className="list-disc pl-4 space-y-1 leading-relaxed">
+            <p className="mb-1">
+              Assignez des colocataires aux post-its par **glisser-déposer** ou en **cliquant d'abord sur un coloc puis sur un slot vide (Tap-to-Assign)**.
+            </p>
+            <ul className="list-disc pl-4 space-y-1">
               <li>
-                Assignez des colocataires aux post-its par **Drag-and-Drop** ou en **cliquant d'abord sur un colocataire puis sur un slot vide (Tap-to-Assign)**.
+                Le temps de résolution dépend des compétences combinées des colocataires assignés.
               </li>
               <li>
-                Le temps de résolution dépend des compétences combinées des colocataires : 
-                <code className="text-violet-400 font-bold bg-slate-900 px-1 py-0.5 rounded ml-1">
-                  Temps = 300 / Σ(Compétences)
-                </code>
+                Résoudre un post-it **retire 30 minutes** de démarches au timer de l'État.
               </li>
               <li>
-                Chaque post-it complété rapporte de la **Solidarité (SP)** et augmente les **Ressources Globales** de la colocation.
+                Résoudre un post-it de type **Droits (⚖️)** retire **90 minutes** !
               </li>
             </ul>
           </div>
 
-          {/* Urgency System */}
+          {/* Urgency and Happiness */}
           <div>
             <h4 className="font-black text-slate-200 mb-1.5 flex items-center gap-1">
               <AlertTriangleIcon className="w-3.5 h-3.5 text-orange-500" />
-              2. Gérer le Système d'Urgence
+              2. Système d'Urgence & Humeur
             </h4>
-            <p className="leading-relaxed mb-1">
-              Les post-its vieillissent s'ils ne sont pas résolus :
+            <p className="mb-1">
+              Si un post-it n'est pas traité à temps, il passe au statut **Orange (3-6 min)** puis **Rouge (6+ min)** :
             </p>
-            <ul className="list-disc pl-4 space-y-1 leading-relaxed">
+            <ul className="list-disc pl-4 space-y-1">
               <li>
-                <span className="text-yellow-400 font-bold">Jaune (0-3 min)</span> : Tout est calme.
+                Les crises orange et rouge infligent des **malus de compétences temporaires** à tous les colocataires sur cette compétence (chiffres en rouge sur leurs profils).
               </li>
               <li>
-                <span className="text-orange-400 font-bold">Orange (3-6 min)</span> : La tension monte. Malus de **-1** permanent à la jauge globale de cette ressource toutes les 15s.
-              </li>
-              <li>
-                <span className="text-rose-400 font-bold">Rouge (+6 min)</span> : Crise ! Malus de **-2** permanent toutes les 15s. Les colocataires perdent beaucoup de **Bonheur**.
-              </li>
-            </ul>
-            <p className="leading-relaxed mt-2 text-[10px] text-slate-400 italic">
-              💡 Le score de **Bonheur** baisse avec le nombre de post-its Orange et Rouge. Si le bonheur est bas, les post-its apparaissent plus vite et le travail ralentit !
-            </p>
-          </div>
-
-          {/* Survival / Time */}
-          <div>
-            <h4 className="font-black text-slate-200 mb-1.5 flex items-center gap-1">
-              <ClockIcon className="w-3.5 h-3.5 text-sky-400" />
-              3. Le Compte à Rebours de l'État
-            </h4>
-            <p className="leading-relaxed">
-              L'État menace d'expulser la colocation. Le compte à rebours commence à **48 heures de jeu simulées** (environ 48 minutes réelles).
-            </p>
-            <ul className="list-disc pl-4 space-y-1 leading-relaxed mt-1">
-              <li>
-                Résoudre des besoins de type **Droits (⚖️)** repousse l'échéance administrative en **rajoutant +1 heure (+60 min)** au timer de l'État !
-              </li>
-              <li>
-                L'amélioration **Avocat Bénévole** ralentit le décompte de l'État.
+                Ces crises réduisent le **Bonheur** de la coloc. L'humeur est représentée par un emoji :
+                <br />
+                😊 **Humeur Radieuse** : Le timer global s'écoule **20% plus vite** vers la victoire !
+                <br />
+                😐 **Humeur Neutre** : Vitesse d'écoulement normale.
+                <br />
+                ☹️ **Humeur Triste** : Progression **ralentie de 20%** et apparition des besoins 30% plus rapide.
               </li>
             </ul>
           </div>
 
-          {/* Secure Victory */}
+          {/* Level Progression */}
           <div>
             <h4 className="font-black text-slate-200 mb-1.5 flex items-center gap-1">
               <Award className="w-3.5 h-3.5 text-emerald-400" />
-              4. Comment Gagner le Jeu ?
+              3. Niveaux & Boîte à Outils
             </h4>
-            <p className="leading-relaxed">
-              Pour gagner, vous devez **sécuriser les dossiers administratifs des 4 colocataires** avant la fin du temps imparti.
+            <p>
+              Accumulez de la Solidarité (SP) en résolvant les post-its pour gagner de l'XP et **monter de niveau** !
             </p>
-            <p className="leading-relaxed mt-1">
-              Cliquez sur le bouton **"ℹ️"** d'un colocataire pour voir son dossier de survie et ses critères de validation (SP requis + jauges de ressources à un niveau minimum de 15/20).
+            <p className="mt-1">
+              Chaque passage au niveau supérieur déclenche une popup de félicitations et vous donne un accès direct à la **Boutique (Boîte à outils 🧰)** pour acquérir des améliorations décisives (coopération, fibre optique, avocat...).
             </p>
           </div>
 
           {/* Balloons */}
           <div className="bg-slate-900/60 p-2.5 rounded-xl border border-white/5">
             <p className="leading-normal">
-              🎈 **Ballons Volants** : Toutes les 30 secondes, un ballon s'envole. Cliquez dessus pour obtenir **+50 de Solidarité** ou un **Boost de Vitesse x2 pendant 10 secondes** !
+              🎈 **Ballons & Boosters** : Cliquez sur les ballons volants pour gagner de la Solidarité (+50) ou activer un boost de vitesse temporaire (Vitesse x2 pendant 10s sur tout le tableau !).
             </p>
           </div>
 
@@ -137,10 +119,10 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
 
         {/* Footer */}
         <button
-          onClick={onClose}
+          onClick={() => { playClickSound(); onClose(); }}
           className="w-full py-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 text-white rounded-xl text-xs font-black shadow-md hover:from-violet-500 hover:to-indigo-500 transition-all border border-indigo-400/30"
         >
-          C'est parti !
+          C'est compris !
         </button>
 
       </div>
@@ -149,10 +131,6 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
 };
 
 // Internal mini icons
-const ClockIcon = (props: React.SVGProps<SVGSVGElement>) => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" {...props}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-);
-
 const AlertTriangleIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
 );

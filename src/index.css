@@ -1,6 +1,5 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Outfit:wght@300;400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Outfit:wght@300;400;500;600;700;800;900&display=swap');
 @import "tailwindcss";
-
 
 @theme {
   --animate-marquee: marquee 30s linear infinite;
@@ -96,20 +95,65 @@
   cursor: pointer;
 }
 
-/* Gradients */
-.bg-gradient-radial {
-  background: radial-gradient(circle at 50% 50%, var(--tw-gradient-stops));
+/* Post-it Realistic Style */
+.font-handwritten {
+  font-family: 'Caveat', cursive;
 }
 
-.neon-border-blue {
-  box-shadow: 0 0 10px rgba(56, 189, 248, 0.2), inset 0 0 5px rgba(56, 189, 248, 0.1);
-  border-color: rgba(56, 189, 248, 0.4);
+.postit-paper {
+  font-family: 'Caveat', cursive;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  min-height: 165px;
+  max-height: 180px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: flex-col;
+  justify-content: space-between;
+  box-shadow: 4px 6px 12px rgba(0, 0, 0, 0.3), inset 0 0 40px rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.neon-border-pink {
-  box-shadow: 0 0 10px rgba(244, 63, 94, 0.2), inset 0 0 5px rgba(244, 63, 94, 0.1);
-  border-color: rgba(244, 63, 94, 0.4);
+.postit-paper:hover {
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: 6px 10px 18px rgba(0, 0, 0, 0.4);
+  z-index: 20;
 }
+
+/* Specific Urgency Colors for Post-its (pastel, paper-like) */
+.postit-jaune {
+  background-color: #fef08a !important; /* Yellow 200 */
+  color: #422006 !important; /* Amber 950 */
+}
+
+.postit-orange {
+  background-color: #fed7aa !important; /* Orange 200 */
+  color: #431407 !important; /* Orange 950 */
+  animation: postit-rustle-orange 4s ease-in-out infinite alternate;
+}
+
+.postit-rouge {
+  background-color: #fecdd3 !important; /* Rose 200 */
+  color: #4c0519 !important; /* Rose 950 */
+  animation: postit-rustle-rouge 2s ease-in-out infinite alternate;
+}
+
+@keyframes postit-rustle-orange {
+  0% { transform: rotate(var(--rot, 1deg)); }
+  100% { transform: rotate(calc(var(--rot, 1deg) + 1.5deg)); }
+}
+
+@keyframes postit-rustle-rouge {
+  0% { transform: rotate(var(--rot, -1deg)); }
+  100% { transform: rotate(calc(var(--rot, -1deg) - 2deg)); }
+}
+
+/* Custom rotations for random looks */
+.rotate-coloc-1 { --rot: 1deg; transform: rotate(1deg); }
+.rotate-coloc-2 { --rot: -1.5deg; transform: rotate(-1.5deg); }
+.rotate-coloc-3 { --rot: 2deg; transform: rotate(2deg); }
+.rotate-coloc-4 { --rot: -2deg; transform: rotate(-2deg); }
 
 /* Pull-to-refresh / bouncing effects for game elements */
 .coloc-active {
@@ -117,25 +161,13 @@
 }
 
 .glow-yellow {
-  box-shadow: 0 0 12px rgba(234, 179, 8, 0.3);
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
 }
 
 .glow-orange {
-  box-shadow: 0 0 12px rgba(249, 115, 22, 0.4);
+  box-shadow: 0 4px 10px rgba(249, 115, 22, 0.2);
 }
 
 .glow-red {
-  box-shadow: 0 0 15px rgba(239, 68, 68, 0.5);
-  animation: pulse-red 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-@keyframes pulse-red {
-  0%, 100% {
-    opacity: 1;
-    box-shadow: 0 0 15px rgba(239, 68, 68, 0.5);
-  }
-  50% {
-    opacity: 0.9;
-    box-shadow: 0 0 5px rgba(239, 68, 68, 0.2);
-  }
+  box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3);
 }

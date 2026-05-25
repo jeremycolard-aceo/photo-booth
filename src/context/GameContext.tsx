@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import confetti from 'canvas-confetti';
+import { playAssignSound, playCompleteSound, playBalloonSound, playLevelUpSound, playClickSound } from '../utils/audio';
 
 // --- Types ---
 
@@ -13,7 +14,6 @@ export interface Roommate {
   role: string;
   description: string;
   dossierName: string;
-  isSecured: boolean; // Has their administrative folder been completed?
   skills: {
     finance: number;
     sante: number;
@@ -21,7 +21,6 @@ export interface Roommate {
     droits: number;
     rebond: number;
   };
-  energy: number; // 0 to 100
   assignedPostitId: string | null;
 }
 
@@ -57,23 +56,34 @@ export interface GameContextType {
   roommates: Roommate[];
   postits: Postit[];
   solidarity: number;
-  resources: Record<ResourceType, number>;
+  level: number;
+  xp: number;
+  xpNeeded: number;
+  levelUpPending: boolean;
+  setLevelUpPending: (pending: boolean) => void;
   upgrades: Upgrade[];
-  stateTimer: number; // in simulated minutes (starts at 48 hours = 2880 mins)
+  stateTimer: number; // in simulated minutes (starts at 48 hours = 2880 mins, decreases to 0 = victory)
   logs: LogEntry[];
   happiness: number;
   balloons: { id: string; x: number; isDoubleSpeed: boolean }[];
   doubleSpeedRemaining: number; // in seconds
   victory: boolean;
-  gameOver: boolean;
   spawnPostit: () => void;
   assignColoc: (colocId: string, postitId: string) => void;
   unassignColoc: (colocId: string) => void;
   buyUpgrade: (id: string) => void;
-  secureRoommate: (id: string) => void;
   clickBalloon: (id: string) => void;
   addLog: (text: string, type?: LogEntry['type']) => void;
   resetGame: () => void;
+  getColocSkillsDynamic: (coloc: Roommate) => {
+    finance: number;
+    sante: number;
+    reseau: number;
+    droits: number;
+    rebond: number;
+    bonuses: Record<ResourceType, boolean>;
+    maluses: Record<ResourceType, boolean>;
+  };
 }
 
 const GameContext = createContext<GameContextType | undefined>(undefined);
@@ -87,11 +97,9 @@ const INITIAL_ROOMMATES: Roommate[] = [
     age: 45,
     avatar: '👨',
     role: 'L\'Exilé Courageux',
-    description: 'Attend ses papiers, courageux et travailleur.',
-    dossierName: 'Régularisation administrative',
-    isSecured: false,
+    description: 'Marc, 45 ans. Ancien chef cuisinier ayant fui son pays en crise. Courageux et digne, il passe ses nuits à étudier le français tout en aidant bénévolement à la banque alimentaire du quartier.',
+    dossierName: 'Dossier de régularisation administrative',
     skills: { finance: 1, sante: 3, reseau: 2, droits: 1, rebond: 5 },
-    energy: 100,
     assignedPostitId: null,
   },
   {
@@ -99,12 +107,10 @@ const INITIAL_ROOMMATES: Roommate[] = [
     name: 'Lisa',
     age: 22,
     avatar: '👩🎓',
-    role: 'L\'Étudiante Précaire',
-    description: 'Cumule 3 jobs, épuisée mais extrêmement sociale.',
+    role: 'L\'Étudiante Solaire',
+    description: 'Lisa, 22 ans. Étudiante en sociologie originaire d\'une famille modeste. Elle cumule la livraison de repas à vélo, le baby-sitting et le tutorat. Épuisée mais rayonnante de sociabilité, elle rêve de monter une coopérative d\'entraide étudiante.',
     dossierName: 'Bourse d\'étude échelon 7',
-    isSecured: false,
     skills: { finance: 1, sante: 2, reseau: 5, droits: 3, rebond: 4 },
-    energy: 100,
     assignedPostitId: null,
   },
   {
@@ -113,11 +119,9 @@ const INITIAL_ROOMMATES: Roommate[] = [
     age: 34,
     avatar: '👨🦽',
     role: 'L\'Ex-Juriste Résilient',
-    description: 'Ancien juriste en fauteuil roulant suite à un accident.',
+    description: 'Nico, 34 ans. Ancien juriste d\'affaires devenu tétraplégique suite à un accident de sport. Expert des rouages administratifs et doté d\'un humour pince-sans-rire, il consacre son temps libre à conseiller juridiquement les familles précaires du quartier.',
     dossierName: 'Reconnaissance Invalidité (AAH)',
-    isSecured: false,
-    skills: { finance: 3, sante: 1, reseau: 4, droits: 5, rebond: 2 },
-    energy: 100,
+    skills: { finance: 3, sante: 1, droits: 5, reseau: 4, rebond: 2 },
     assignedPostitId: null,
   },
   {
@@ -126,11 +130,9 @@ const INITIAL_ROOMMATES: Roommate[] = [
     age: 70,
     avatar: '👵',
     role: 'La Mémoire du Quartier',
-    description: 'Petite retraite, mais connaît tout le monde dans la rue.',
+    description: 'Marie, 70 ans. Ancienne institutrice retraitée et veuve. Sans famille proche mais débordante d\'énergie, elle connaît l\'histoire de chaque habitant de la rue et prépare de célèbres gouters d\'accueil pour tous les nouveaux arrivants.',
     dossierName: 'Logement social adapté (Senior)',
-    isSecured: false,
     skills: { finance: 4, sante: 3, reseau: 5, droits: 2, rebond: 1 },
-    energy: 100,
     assignedPostitId: null,
   },
 ];
@@ -147,7 +149,7 @@ const UPGRADES_LIST: Upgrade[] = [
   {
     id: 'reunionHebdo',
     name: 'Réunion Hebdomadaire',
-    description: '+1 permanent à toutes les jauges de ressources.',
+    description: '+1 permanent à toutes les jauges de compétences des colocs.',
     cost: 300,
     icon: '🤝',
     purchased: false,
@@ -163,7 +165,7 @@ const UPGRADES_LIST: Upgrade[] = [
   {
     id: 'avocatBenevole',
     name: 'Avocat Bénévole',
-    description: 'Ralentit de 15% le décompte de l\'État et ajoute 5% de temps bonus.',
+    description: 'Accélère l\'obtention des papiers : le timer global s\'écoule 15% plus vite vers la victoire !',
     cost: 400,
     icon: '⚖️',
     purchased: false,
@@ -189,38 +191,38 @@ const UPGRADES_LIST: Upgrade[] = [
 const POSTITS_POOL: { title: string; type: ResourceType; icon: string }[] = [
   // Finance
   { title: 'Loyer en retard', type: 'finance', icon: '💶' },
-  { title: 'Facture EDF salée', type: 'finance', icon: '💶' },
-  { title: 'Panne chauffe-eau', type: 'finance', icon: '💶' },
-  { title: 'Recharger Pass Navigo', type: 'finance', icon: '💶' },
-  { title: 'Courses collectives', type: 'finance', icon: '💶' },
-  { title: 'Taxe poubelles réclamée', type: 'finance', icon: '💶' },
+  { title: 'Facture EDF', type: 'finance', icon: '💶' },
+  { title: 'Réparation chauffe-eau', type: 'finance', icon: '💶' },
+  { title: 'Pass Navigo', type: 'finance', icon: '💶' },
+  { title: 'Courses de la semaine', type: 'finance', icon: '💶' },
+  { title: 'Taxe poubelle', type: 'finance', icon: '💶' },
   // Santé
   { title: 'Grippe saisonnière', type: 'sante', icon: '💪' },
-  { title: 'Rendez-vous dentiste', type: 'sante', icon: '💪' },
+  { title: 'Rdv dentiste', type: 'sante', icon: '💪' },
   { title: 'Burn-out collectif', type: 'sante', icon: '💪' },
   { title: 'Panne de chauffage', type: 'sante', icon: '💪' },
-  { title: 'Sommeil très perturbé', type: 'sante', icon: '💪' },
-  { title: 'Séance Kiné Nico', type: 'sante', icon: '💪' },
-  // Réseau
-  { title: 'Voisin très bruyant', type: 'reseau', icon: '🧑🤝🧑' },
-  { title: 'Gros besoin d\'écoute', type: 'reseau', icon: '🧑🤝🧑' },
-  { title: 'Solitude pesante', type: 'reseau', icon: '🧑🤝🧑' },
-  { title: 'Organiser un repas', type: 'reseau', icon: '🧑🤝🧑' },
-  { title: 'Guerre de la vaisselle', type: 'reseau', icon: '🧑🤝🧑' },
-  { title: 'Perte de clés du hall', type: 'reseau', icon: '🧑🤝🧑' },
+  { title: 'Sommeil perturbé', type: 'sante', icon: '💪' },
+  { title: 'Kiné Nico', type: 'sante', icon: '💪' },
+  // Réseau (🤝 replaced)
+  { title: 'Voisin bruyant', type: 'reseau', icon: '🤝' },
+  { title: 'Besoin d\'écoute', type: 'reseau', icon: '🤝' },
+  { title: 'Solitude', type: 'reseau', icon: '🤝' },
+  { title: 'Organiser un repas', type: 'reseau', icon: '🤝' },
+  { title: 'Conflit vaisselle', type: 'reseau', icon: '🤝' },
+  { title: 'Perte de clés', type: 'reseau', icon: '🤝' },
   // Droits
-  { title: 'Courrier CAF mystère', type: 'droits', icon: '⚖️' },
-  { title: 'Déclaration d\'impôts', type: 'droits', icon: '⚖️' },
-  { title: 'Mutuelle à renouveler', type: 'droits', icon: '⚖️' },
-  { title: 'Dossier APL bloqué', type: 'droits', icon: '⚖️' },
-  { title: 'Amende indue majorée', type: 'droits', icon: '⚖️' },
-  { title: 'Contrat de bail à signer', type: 'droits', icon: '⚖️' },
+  { title: 'Courrier CAF', type: 'droits', icon: '⚖️' },
+  { title: 'Déclaration impôts', type: 'droits', icon: '⚖️' },
+  { title: 'Renouvellement mutuelle', type: 'droits', icon: '⚖️' },
+  { title: 'Dossier APL', type: 'droits', icon: '⚖️' },
+  { title: 'Amende indue', type: 'droits', icon: '⚖️' },
+  { title: 'Contrat de bail', type: 'droits', icon: '⚖️' },
   // Rebond
-  { title: 'Refaire le CV de Marc', type: 'rebond', icon: '🚀' },
-  { title: 'Inscription stage pro', type: 'rebond', icon: '🚀' },
-  { title: 'Baisse de moral générale', type: 'rebond', icon: '🚀' },
-  { title: 'Panne de vélo de Lisa', type: 'rebond', icon: '🚀' },
-  { title: 'Trouver une association', type: 'rebond', icon: '🚀' },
+  { title: 'Refaire CV Marc', type: 'rebond', icon: '🚀' },
+  { title: 'Inscription stage', type: 'rebond', icon: '🚀' },
+  { title: 'Moral en baisse', type: 'rebond', icon: '🚀' },
+  { title: 'Panne de vélo', type: 'rebond', icon: '🚀' },
+  { title: 'Trouver une asso', type: 'rebond', icon: '🚀' },
   { title: 'Lettre de motivation', type: 'rebond', icon: '🚀' },
 ];
 
@@ -238,26 +240,23 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // --- Game State Hooks ---
   const [roommates, setRoommates] = useState<Roommate[]>(INITIAL_ROOMMATES);
   const [postits, setPostits] = useState<Postit[]>([]);
-  const [solidarity, setSolidarity] = useState<number>(50); // Start with 50 solidarity points
-  const [resources, setResources] = useState<Record<ResourceType, number>>({
-    finance: 10,
-    sante: 10,
-    reseau: 10,
-    droits: 10,
-    rebond: 10,
-  });
+  const [solidarity, setSolidarity] = useState<number>(50); // Wallet
+  const [level, setLevel] = useState<number>(1);
+  const [xp, setXp] = useState<number>(0);
+  const [levelUpPending, setLevelUpPending] = useState<boolean>(false);
   const [upgrades, setUpgrades] = useState<Upgrade[]>(UPGRADES_LIST);
-  const [stateTimer, setStateTimer] = useState<number>(2880); // 48 hours * 60 minutes = 2880 mins
+  const [stateTimer, setStateTimer] = useState<number>(2880); // Countdown to 0 (Starts at 48h = 2880 mins)
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [balloons, setBalloons] = useState<{ id: string; x: number; isDoubleSpeed: boolean }[]>([]);
   const [doubleSpeedRemaining, setDoubleSpeedRemaining] = useState<number>(0);
   const [victory, setVictory] = useState<boolean>(false);
-  const [gameOver, setGameOver] = useState<boolean>(false);
 
   // Time tracking references
   const lastSpawnRef = useRef<number>(0);
   const lastBalloonRef = useRef<number>(0);
   const lastNewsRef = useRef<number>(0);
+
+  const xpNeeded = level * 300;
 
   // Add a log entry helper
   const addLog = useCallback((text: string, type: LogEntry['type'] = 'info') => {
@@ -268,54 +267,44 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     ]);
   }, []);
 
-  // Initialize Game from LocalStorage if available
-  useEffect(() => {
-    const saved = localStorage.getItem('coloc_sociale_save');
-    if (saved) {
-      try {
-        const data = JSON.parse(saved);
-        setRoommates(data.roommates || INITIAL_ROOMMATES);
-        setPostits(data.postits || []);
-        setSolidarity(data.solidarity ?? 50);
-        setResources(data.resources || { finance: 10, sante: 10, reseau: 10, droits: 10, rebond: 10 });
-        setUpgrades(data.upgrades || UPGRADES_LIST);
-        setStateTimer(data.stateTimer ?? 2880);
-        setLogs(data.logs || []);
-        setDoubleSpeedRemaining(data.doubleSpeedRemaining ?? 0);
-        setVictory(data.victory ?? false);
-        setGameOver(data.gameOver ?? false);
-        addLog('Coloc chargée avec succès ! Bienvenue à la maison. 🏠', 'success');
-      } catch (e) {
-        console.error('Failed to load save', e);
-        // Start fresh
-        resetGame();
-      }
-    } else {
-      // First log
-      addLog('Début de l\'aventure en colocation ! Remplissez les dossiers pour sécuriser Marc, Lisa, Nico et Marie.', 'info');
-      // Spawn two initial post-its to start playing
-      spawnInitialPostits();
-    }
-  }, []);
+  // Compute dynamic skills of a roommate based on bonuses/maluses
+  const getColocSkillsDynamic = useCallback((coloc: Roommate) => {
+    const hasReunion = upgrades.find((u) => u.id === 'reunionHebdo')?.purchased;
+    const skills = { ...coloc.skills };
+    const bonuses = { finance: false, sante: false, reseau: false, droits: false, rebond: false };
+    const maluses = { finance: false, sante: false, reseau: false, droits: false, rebond: false };
 
-  // Save game periodically
-  useEffect(() => {
-    if (!victory && !gameOver) {
-      const dataToSave = {
-        roommates,
-        postits,
-        solidarity,
-        resources,
-        upgrades,
-        stateTimer,
-        logs,
-        doubleSpeedRemaining,
-        victory,
-        gameOver,
-      };
-      localStorage.setItem('coloc_sociale_save', JSON.stringify(dataToSave));
-    }
-  }, [roommates, postits, solidarity, resources, upgrades, stateTimer, logs, doubleSpeedRemaining, victory, gameOver]);
+    (Object.keys(skills) as ResourceType[]).forEach((type) => {
+      // 1. Apply upgrade bonus
+      if (hasReunion) {
+        skills[type] += 1;
+        bonuses[type] = true;
+      }
+
+      // 2. Apply active post-it maluses
+      // Count active post-its of this type that are in orange or red state
+      const orangeCount = postits.filter((p) => p.type === type && p.urgency === 'orange').length;
+      const redCount = postits.filter((p) => p.type === type && p.urgency === 'rouge').length;
+      
+      const malusSum = (orangeCount * 1) + (redCount * 2);
+      if (malusSum > 0) {
+        skills[type] = Math.max(1, skills[type] - malusSum); // always keep at least 1
+        maluses[type] = true;
+        // In case they overlap, let malus override bonus visually
+        bonuses[type] = false;
+      }
+    });
+
+    return {
+      finance: skills.finance,
+      sante: skills.sante,
+      reseau: skills.reseau,
+      droits: skills.droits,
+      rebond: skills.rebond,
+      bonuses,
+      maluses,
+    };
+  }, [upgrades, postits]);
 
   // Calculate Happiness
   const orangeCount = postits.filter((p) => p.urgency === 'orange').length;
@@ -327,20 +316,69 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const happinessMultiplierForRed = hasBouilloire ? 10 : 20;
   const calculatedHappiness = Math.max(0, 100 - (orangeCount * 10) - (redCount * happinessMultiplierForRed));
 
+  // Initialize Game from LocalStorage if available
+  useEffect(() => {
+    const saved = localStorage.getItem('coloc_sociale_save_v2');
+    if (saved) {
+      try {
+        const data = JSON.parse(saved);
+        setRoommates(data.roommates || INITIAL_ROOMMATES);
+        setPostits(data.postits || []);
+        setSolidarity(data.solidarity ?? 50);
+        setLevel(data.level ?? 1);
+        setXp(data.xp ?? 0);
+        setLevelUpPending(data.levelUpPending ?? false);
+        setUpgrades(data.upgrades || UPGRADES_LIST);
+        setStateTimer(data.stateTimer ?? 2880);
+        setLogs(data.logs || []);
+        setDoubleSpeedRemaining(data.doubleSpeedRemaining ?? 0);
+        setVictory(data.victory ?? false);
+        addLog('Coloc chargée avec succès ! Bienvenue à la maison. 🏠', 'success');
+      } catch (e) {
+        console.error('Failed to load save', e);
+        resetGame();
+      }
+    } else {
+      addLog('Début de l\'aventure en colocation ! Réduisez le timer global de l\'État pour valider tous les dossiers administratifs !', 'info');
+      spawnInitialPostits();
+    }
+  }, []);
+
+  // Save game periodically
+  useEffect(() => {
+    if (!victory) {
+      const dataToSave = {
+        roommates,
+        postits,
+        solidarity,
+        level,
+        xp,
+        levelUpPending,
+        upgrades,
+        stateTimer,
+        logs,
+        doubleSpeedRemaining,
+        victory,
+      };
+      localStorage.setItem('coloc_sociale_save_v2', JSON.stringify(dataToSave));
+    }
+  }, [roommates, postits, solidarity, level, xp, levelUpPending, upgrades, stateTimer, logs, doubleSpeedRemaining, victory]);
+
   // Helper: Reset Game
   const resetGame = () => {
     setRoommates(INITIAL_ROOMMATES.map(r => ({ ...r })));
     setPostits([]);
     setSolidarity(50);
-    setResources({ finance: 10, sante: 10, reseau: 10, droits: 10, rebond: 10 });
+    setLevel(1);
+    setXp(0);
+    setLevelUpPending(false);
     setUpgrades(UPGRADES_LIST.map(u => ({ ...u })));
     setStateTimer(2880);
     setLogs([]);
     setBalloons([]);
     setDoubleSpeedRemaining(0);
     setVictory(false);
-    setGameOver(false);
-    localStorage.removeItem('coloc_sociale_save');
+    localStorage.removeItem('coloc_sociale_save_v2');
     setTimeout(() => {
       spawnInitialPostits();
       addLog('Aventure réinitialisée ! Nouvelle coloc ouverte.', 'info');
@@ -349,7 +387,6 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const spawnInitialPostits = () => {
     const list: Postit[] = [];
-    // Spawn one Finance and one network postit to begin
     const pool1 = POSTITS_POOL.find(p => p.type === 'finance')!;
     const pool2 = POSTITS_POOL.find(p => p.type === 'reseau')!;
     
@@ -358,7 +395,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       title: pool1.title,
       type: pool1.type,
       icon: pool1.icon,
-      colorClass: 'from-amber-400/20 to-yellow-500/20 border-yellow-500/40 glow-yellow',
+      colorClass: 'postit-jaune rotate-coloc-1 glow-yellow',
       progress: 0,
       elapsedTime: 0,
       urgency: 'jaune',
@@ -370,7 +407,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       title: pool2.title,
       type: pool2.type,
       icon: pool2.icon,
-      colorClass: 'from-amber-400/20 to-yellow-500/20 border-yellow-500/40 glow-yellow',
+      colorClass: 'postit-jaune rotate-coloc-2 glow-yellow',
       progress: 0,
       elapsedTime: 0,
       urgency: 'jaune',
@@ -381,17 +418,21 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Helper: Spawn a single random post-it
   const spawnPostit = useCallback(() => {
-    // Prevent spawning more than 8 post-its to keep screen clean
     if (postits.length >= 8) return;
 
     const randomIndex = Math.floor(Math.random() * POSTITS_POOL.length);
     const item = POSTITS_POOL[randomIndex];
+    
+    // Choose a random small rotation class to give dynamic real post-it feel
+    const rotations = ['rotate-coloc-1', 'rotate-coloc-2', 'rotate-coloc-3', 'rotate-coloc-4'];
+    const randomRotation = rotations[Math.floor(Math.random() * rotations.length)];
+
     const newPostit: Postit = {
       id: `postit-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       title: item.title,
       type: item.type,
       icon: item.icon,
-      colorClass: 'from-amber-400/20 to-yellow-500/20 border-yellow-500/40 glow-yellow',
+      colorClass: `postit-jaune ${randomRotation} glow-yellow`,
       progress: 0,
       elapsedTime: 0,
       urgency: 'jaune',
@@ -399,100 +440,31 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     setPostits((prev) => [...prev, newPostit]);
-    addLog(`Nouveau besoin apparu : "${item.title}" (${item.icon}) !`, 'info');
+    addLog(`Nouveau post-it : "${item.title}" !`, 'info');
   }, [postits.length, addLog]);
-
-  // Helper: Secure Roommate Dossier (Win conditions check)
-  const secureRoommate = (id: string) => {
-    const roommate = roommates.find((r) => r.id === id);
-    if (!roommate || roommate.isSecured) return;
-
-    // Define cost requirements based on roommate
-    let cost = 800;
-    let res1: ResourceType = 'finance';
-    let res2: ResourceType = 'reseau';
-
-    if (id === 'marc') {
-      cost = 1000;
-      res1 = 'rebond';
-      res2 = 'droits';
-    } else if (id === 'lisa') {
-      cost = 800;
-      res1 = 'reseau';
-      res2 = 'finance';
-    } else if (id === 'nico') {
-      cost = 1200;
-      res1 = 'sante';
-      res2 = 'droits';
-    } else if (id === 'marie') {
-      cost = 900;
-      res1 = 'reseau';
-      res2 = 'sante';
-    }
-
-    // Check requirements
-    const hasReunion = upgrades.find((u) => u.id === 'reunionHebdo')?.purchased ? 1 : 0;
-    const currentRes1 = resources[res1] + hasReunion;
-    const currentRes2 = resources[res2] + hasReunion;
-
-    if (solidarity >= cost && currentRes1 >= 15 && currentRes2 >= 15) {
-      // Deduct solidarity
-      setSolidarity((prev) => prev - cost);
-      // Mark secured
-      setRoommates((prev) =>
-        prev.map((r) => {
-          if (r.id === id) {
-            // Free from post-it if assigned
-            if (r.assignedPostitId) {
-              unassignColoc(r.id);
-            }
-            return { ...r, isSecured: true, assignedPostitId: null };
-          }
-          return r;
-        })
-      );
-      addLog(`🎉 DOSSIER DÉPOSÉ ! ${roommate.name} est officiellement sécurisé(e) ! Bravo !`, 'success');
-      confetti({ particleCount: 80, spread: 60, origin: { y: 0.8 } });
-
-      // Check if all are secured
-      setRoommates((currentRoommates) => {
-        const nextRoommates = currentRoommates.map(r => r.id === id ? { ...r, isSecured: true } : r);
-        const allSecured = nextRoommates.every((r) => r.isSecured);
-        if (allSecured) {
-          setVictory(true);
-          confetti({ particleCount: 200, spread: 100, origin: { y: 0.6 } });
-        }
-        return nextRoommates;
-      });
-    } else {
-      addLog(`Impossible de valider le dossier de ${roommate.name}. Vérifiez les ressources requises !`, 'error');
-    }
-  };
 
   // Drag and Drop assignment logic
   const assignColoc = useCallback((colocId: string, postitId: string) => {
     const roommate = roommates.find((r) => r.id === colocId);
-    if (!roommate || roommate.isSecured) return;
+    if (!roommate) return;
 
-    // Check if roommate is already assigned somewhere else
+    // Play assignment sound!
+    playAssignSound();
+
     const previousPostitId = roommate.assignedPostitId;
 
     setPostits((prevPostits) => {
-      // Find the target postit
       const target = prevPostits.find((p) => p.id === postitId);
       if (!target) return prevPostits;
 
-      // Check capacity: Tableau XL allows 2 colocs, otherwise only 1
       const isXL = upgrades.find((u) => u.id === 'tableauXL')?.purchased;
       const capacity = isXL ? 2 : 1;
 
-      if (target.assignedColocs.includes(colocId)) return prevPostits; // Already assigned here
+      if (target.assignedColocs.includes(colocId)) return prevPostits;
 
       if (target.assignedColocs.length >= capacity) {
-        // Slot is full! If capacity is 1, let's swap or kick the other out
         if (capacity === 1) {
           const kickedColocId = target.assignedColocs[0];
-          // Kick the other coloc out
           setRoommates((prevColocs) =>
             prevColocs.map((c) =>
               c.id === kickedColocId
@@ -513,18 +485,15 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
             return p;
           });
         } else {
-          // Cannot add, fully filled
           return prevPostits;
         }
       }
 
-      // Safe to assign
       setRoommates((prevColocs) =>
         prevColocs.map((c) => {
           if (c.id === colocId) {
             return { ...c, assignedPostitId: postitId };
           }
-          // If we kicked them from another postit
           if (previousPostitId && c.assignedPostitId === previousPostitId && c.id === colocId) {
             return { ...c, assignedPostitId: postitId };
           }
@@ -533,11 +502,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       );
 
       return prevPostits.map((p) => {
-        // Remove from previous postit
         if (previousPostitId && p.id === previousPostitId) {
           return { ...p, assignedColocs: p.assignedColocs.filter((c) => c !== colocId) };
         }
-        // Add to new postit
         if (p.id === postitId) {
           return { ...p, assignedColocs: [...p.assignedColocs, colocId] };
         }
@@ -547,6 +514,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [roommates, upgrades]);
 
   const unassignColoc = useCallback((colocId: string) => {
+    playAssignSound(); // subtle plop when unassigning too
     setRoommates((prev) =>
       prev.map((c) => (c.id === colocId ? { ...c, assignedPostitId: null } : c))
     );
@@ -566,22 +534,16 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (upgrade.purchased) return;
 
     if (solidarity >= upgrade.cost) {
+      playClickSound(); // retro chime/click
       setSolidarity((prev) => prev - upgrade.cost);
       setUpgrades((prev) =>
         prev.map((u) => (u.id === id ? { ...u, purchased: true } : u))
       );
 
-      addLog(`Boutique : Achat de "${upgrade.name}" (${upgrade.icon}) effectué ! 🛒`, 'success');
+      addLog(`Amélioration débloquée : "${upgrade.name}" (${upgrade.icon}) ! 🛠️`, 'success');
       confetti({ particleCount: 30, spread: 40 });
-
-      // Special one-time upgrades triggers
-      if (id === 'avocatBenevole') {
-        // Instantly add 5% to the State Timer
-        setStateTimer((prev) => Math.min(2880, prev + Math.floor(2880 * 0.05)));
-        addLog('L\'Avocat Bénévole a repoussé l\'échéance de l\'État ! (+2.4h de délai)', 'bonus');
-      }
     } else {
-      addLog(`Pas assez de Solidarité pour acheter "${upgrade.name}". Besoin de ${upgrade.cost} 💶.`, 'error');
+      addLog(`Pas assez de Solidarité pour acheter "${upgrade.name}".`, 'error');
     }
   };
 
@@ -590,44 +552,70 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const balloon = balloons.find((b) => b.id === id);
     if (!balloon) return;
 
-    // Remove balloon
+    // Pop sound!
+    playBalloonSound();
+
     setBalloons((prev) => prev.filter((b) => b.id !== id));
 
-    // Calculate reward modifier
     const isDouble = balloon.isDoubleSpeed;
     if (isDouble) {
-      // Give double speed boost for 10s
       setDoubleSpeedRemaining((prev) => prev + 10);
-      addLog('🎈 Ballon éclaté ! Boost de Vitesse x2 pendant 10 secondes activé ! ⚡', 'bonus');
+      addLog('🎈 Ballon éclaté ! Boost de Vitesse x2 pendant 10s activé ! ⚡', 'bonus');
     } else {
-      // Give 50 solidarity (+20% if caisseCommune is bought)
       const hasCaisse = upgrades.find((u) => u.id === 'caisseCommune')?.purchased;
       const amount = hasCaisse ? 60 : 50;
+      
+      // Update solidarity and XP!
       setSolidarity((prev) => prev + amount);
-      addLog(`🎈 Ballon éclaté ! +${amount} Solidarité gagnés ! 💰`, 'bonus');
+      setXp((prev) => prev + amount);
+      
+      addLog(`🎈 Ballon éclaté ! +${amount} Solidarité & XP gagnés ! 💰`, 'bonus');
     }
     
-    // Play subtle sound / effect
     confetti({ particleCount: 15, colors: ['#f43f5e', '#38bdf8', '#fbbf24'] });
   };
 
-  // Tick Core Engine: Runs every 1 second (1 real tick)
+  // Level Progression Handler
   useEffect(() => {
-    if (victory || gameOver) return;
+    if (xp >= xpNeeded && !victory) {
+      // Level Up!
+      setLevel((l) => {
+        const nextL = l + 1;
+        playLevelUpSound(); // play gorgeous fanfare arpeggio!
+        setLevelUpPending(true); // show Congratulations shop pop-up!
+        addLog(`🎉 PASSAGE AU NIVEAU ${nextL} ! Félicitations ! Votre colocation s'épanouit.`, 'success');
+        confetti({ particleCount: 100, spread: 80, origin: { y: 0.7 } });
+        return nextL;
+      });
+    }
+  }, [xp, xpNeeded, victory, addLog]);
+
+  // Tick Core Engine: Runs every 1 second
+  useEffect(() => {
+    if (victory) return;
 
     const timer = setInterval(() => {
       const now = Date.now();
 
-      // --- 1. Decrement state eviction timer ---
-      // 1 real second = 1 simulated minute of game time (2880 seconds total)
-      // Avocat Bénévole slows down decay by 15%
-      const hasAvocat = upgrades.find((u) => u.id === 'avocatBenevole')?.purchased;
-      const decayAmount = hasAvocat ? 0.85 : 1;
+      // --- 1. Eviction timer calculations ---
+      // Starts at 2880 mins (48h). Goal is to bring it to 0 (validation/victory).
+      // Eviction speed depends on Coloc Happiness:
+      // Happy (calculatedHappiness > 70) => decreases by 1.2 game minutes per second.
+      // Neutral (40-70) => decreases by 1.0 game minutes per second.
+      // Sad (<40) => decreases by 0.5 game minutes per second.
+      const baseTickMinutes = calculatedHappiness > 70 ? 1.2 : calculatedHappiness >= 40 ? 1.0 : 0.5;
       
+      // Upgrade Avocat Bénévole speeds up validation time by 15%
+      const hasAvocat = upgrades.find((u) => u.id === 'avocatBenevole')?.purchased;
+      const speedMultiplier = hasAvocat ? 1.15 : 1.0;
+
+      const elapsedGameMins = baseTickMinutes * speedMultiplier;
+
       setStateTimer((prev) => {
-        const next = prev - decayAmount;
+        const next = prev - elapsedGameMins;
         if (next <= 0) {
-          setGameOver(true);
+          setVictory(true);
+          confetti({ particleCount: 200, spread: 100, origin: { y: 0.6 } });
           return 0;
         }
         return next;
@@ -640,44 +628,39 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setPostits((prevPostits) => {
         const unresolved: Postit[] = [];
 
-        // We use a temp array to check completions
         for (const postit of prevPostits) {
-          // Increment elapsed time (in seconds)
           const newElapsedTime = postit.elapsedTime + 1;
           
-          // Determine Urgency Level
-          // 0-3 min (0-180s) : Jaune
-          // 3-6 min (180-360s) : Orange
-          // +6 min (>360s) : Rouge
           let newUrgency = postit.urgency;
           let newColorClass = postit.colorClass;
 
+          // Urgency visual transitions (pastels paper rotation preserved)
+          const rotClass = postit.colorClass.split(' ').find(c => c.startsWith('rotate-coloc-')) || 'rotate-coloc-1';
+
           if (newElapsedTime > 360) {
             newUrgency = 'rouge';
-            newColorClass = 'from-red-500/20 to-rose-600/20 border-rose-500/40 glow-red';
+            newColorClass = `postit-rouge ${rotClass} glow-red`;
           } else if (newElapsedTime > 180) {
             newUrgency = 'orange';
-            newColorClass = 'from-orange-400/20 to-amber-600/20 border-orange-500/40 glow-orange';
+            newColorClass = `postit-orange ${rotClass} glow-orange`;
           } else {
             newUrgency = 'jaune';
-            newColorClass = 'from-amber-400/20 to-yellow-500/20 border-yellow-500/40 glow-yellow';
+            newColorClass = `postit-jaune ${rotClass} glow-yellow`;
           }
 
-          // Compute processing progress:
-          // Processing speed = Sum(Roommates skills for this resource)
-          // If Happiness < 50%, reduce speed by 20%
-          const speedPenalty = calculatedHappiness < 50 ? 0.8 : 1.0;
+          // Calculate collective skills processing power
+          const speedPenalty = calculatedHappiness < 40 ? 0.8 : 1.0;
           const doubleSpeedMultiplier = doubleSpeedRemaining > 0 ? 2 : 1;
 
           let sumSkills = 0;
           postit.assignedColocs.forEach((colocId) => {
             const coloc = roommates.find((c) => c.id === colocId);
             if (coloc) {
-              sumSkills += coloc.skills[postit.type];
+              const dynamicStats = getColocSkillsDynamic(coloc);
+              sumSkills += dynamicStats[postit.type];
             }
           });
 
-          // Work target is 300 base, 270 if Fibre Optique
           const hasFibre = upgrades.find((u) => u.id === 'fibreOptique')?.purchased;
           const maxProgress = hasFibre ? 270 : 300;
 
@@ -688,39 +671,31 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           if (nextProgress >= maxProgress) {
             // Post-it is RESOLVED!
+            playCompleteSound(); // retro chime!
             
-            // Calculate Solidarity gains (+50 base, +20% if Caisse Commune)
+            // Calculate Solidarity & XP gains (+50 base, +20% if Caisse Commune)
             const hasCaisse = upgrades.find((u) => u.id === 'caisseCommune')?.purchased;
-            const solidarityGain = Math.round((hasCaisse ? 60 : 50));
-            setSolidarity((s) => s + solidarityGain);
+            const reward = Math.round((hasCaisse ? 60 : 50));
+            
+            setSolidarity((s) => s + reward);
+            setXp((x) => x + reward); // XP matches Solidarity gains!
 
-            // Add +1 or +2 to corresponding global resource level (depending on post-it difficulty/urgency)
-            // Yellow resolution gives +1, Orange gives +1, Red gives +2 to recover!
-            const resourceIncrease = postit.urgency === 'rouge' ? 2 : 1;
-            setResources((res) => {
-              const currentVal = res[postit.type];
-              return {
-                ...res,
-                [postit.type]: Math.min(20, currentVal + resourceIncrease),
-              };
-            });
+            // INVERTED TIMER REWARD:
+            // Completing a post-it SUBTRACTS time from the global validation counter (brings us closer to validation/victory!).
+            // Standard completed: subtracts 30 game minutes.
+            // Droits (⚖️) completed: subtracts 90 game minutes! (accelerates paperwork).
+            const subtractMins = postit.type === 'droits' ? 90 : 30;
+            setStateTimer((t) => Math.max(0, t - subtractMins));
 
-            // If it's a "Droits" ⚖️ post-it, it adds +60 minutes (1 simulated hour) to the State Timer!
-            if (postit.type === 'droits') {
-              setStateTimer((t) => Math.min(2880, t + 60));
-              addLog(`⚖️ Droits résolus ! L'État recule d'une heure. (+60 mins au timer)`, 'success');
-            }
-
-            // Release roomates
+            // Release roommates
             setRoommates((colocs) =>
               colocs.map((c) =>
                 postit.assignedColocs.includes(c.id) ? { ...c, assignedPostitId: null } : c
               )
             );
 
-            addLog(`Besoin résolu : "${postit.title}" ! +${solidarityGain} Solidarité 🤝`, 'success');
+            addLog(`Besoin résolu : "${postit.title}" ! -${subtractMins} min de démarches et +${reward} SP 🤝`, 'success');
           } else {
-            // Keep unresolved
             unresolved.push({
               ...postit,
               elapsedTime: newElapsedTime,
@@ -734,36 +709,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return unresolved;
       });
 
-      // --- 4. Apply resource penalties for Orange (-1) and Red (-2) post-its ---
-      // Every 15 seconds, we apply penalties if post-its are orange/red
-      if (Math.floor(now / 1000) % 15 === 0 && postits.length > 0) {
-        setResources((prevResources) => {
-          const nextResources = { ...prevResources };
-          let penalized = false;
-
-          postits.forEach((p) => {
-            if (p.urgency === 'orange') {
-              nextResources[p.type] = Math.max(0, nextResources[p.type] - 1);
-              penalized = true;
-            } else if (p.urgency === 'rouge') {
-              nextResources[p.type] = Math.max(0, nextResources[p.type] - 2);
-              penalized = true;
-            }
-          });
-
-          if (penalized) {
-            addLog(`⚠️ Des post-its non résolus affectent l'équilibre de la maison ! Jauges en baisse.`, 'warning');
-          }
-          return nextResources;
-        });
-      }
-
-      // --- 5. Spawn logic ---
-      // Base spawn rate: 45 seconds
-      // Happiness impact:
-      // Happiness < 75%: spawn every 30s
-      // Happiness < 50%: spawn every 20s
-      const currentSpawnDelay = calculatedHappiness < 50 ? 20 : calculatedHappiness < 75 ? 30 : 45;
+      // --- 4. Spawn logic ---
+      // If happiness is ☹️ (<40), post-its spawn 30% faster (approx. every 30s instead of 45s)
+      const currentSpawnDelay = calculatedHappiness < 40 ? 30 : 45;
       const currentSecs = Math.floor(now / 1000);
       if (lastSpawnRef.current === 0) {
         lastSpawnRef.current = currentSecs;
@@ -774,47 +722,39 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         lastSpawnRef.current = currentSecs;
       }
 
-      // --- 6. Balloon Spawner ---
-      // Every 30 seconds a balloon emoji appears
+      // --- 5. Balloon Spawner ---
       if (lastBalloonRef.current === 0) {
         lastBalloonRef.current = currentSecs;
       }
       if (currentSecs - lastBalloonRef.current >= 30) {
         const balloonId = `balloon-${now}`;
-        const randomX = Math.floor(Math.random() * 70) + 15; // 15% to 85% width
-        const isDoubleSpeed = Math.random() > 0.6; // 40% chance for x2 speed boost balloon
+        const randomX = Math.floor(Math.random() * 70) + 15;
+        const isDoubleSpeed = Math.random() > 0.6;
         
         setBalloons((prev) => [...prev, { id: balloonId, x: randomX, isDoubleSpeed }]);
         lastBalloonRef.current = currentSecs;
 
-        // Auto remove balloon after 12s if not clicked (to prevent memory leaks)
         setTimeout(() => {
           setBalloons((prev) => prev.filter((b) => b.id !== balloonId));
         }, 12000);
       }
 
-      // --- 7. Random News Feed Events ---
-      // Trigger a news log every 40 seconds
+      // --- 6. Random News Feed Events ---
       if (lastNewsRef.current === 0) {
         lastNewsRef.current = currentSecs;
       }
       if (currentSecs - lastNewsRef.current >= 40) {
         const randomNewsItem = RANDOM_NEWS[Math.floor(Math.random() * RANDOM_NEWS.length)];
         
-        // Execute the news side-effects
         if (randomNewsItem.bonus === 'happiness') {
-          // Add happiness via a temporary buffer if needed, but since it's calculated dynamically,
-          // we can give Solidarity or Resource instead, or display a beautiful alert!
           setSolidarity((s) => s + 20);
-        } else if (randomNewsItem.bonus === 'resource' && randomNewsItem.target) {
-          setResources((res) => ({
-            ...res,
-            [randomNewsItem.target!]: Math.max(0, Math.min(20, res[randomNewsItem.target!] + randomNewsItem.value)),
-          }));
+          setXp((x) => x + 20);
         } else if (randomNewsItem.bonus === 'solidarity') {
           setSolidarity((s) => s + randomNewsItem.value);
+          setXp((x) => x + randomNewsItem.value);
         } else if (randomNewsItem.bonus === 'time') {
-          setStateTimer((t) => Math.min(2880, t + randomNewsItem.value));
+          // Accelerate state validation: subtracts time!
+          setStateTimer((t) => Math.max(0, t - randomNewsItem.value));
         }
 
         addLog(randomNewsItem.text, randomNewsItem.type);
@@ -824,7 +764,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [postits, roommates, upgrades, calculatedHappiness, doubleSpeedRemaining, victory, gameOver, spawnPostit, addLog]);
+  }, [postits, roommates, upgrades, calculatedHappiness, doubleSpeedRemaining, victory, spawnPostit, addLog, getColocSkillsDynamic]);
 
   return (
     <GameContext.Provider
@@ -832,7 +772,11 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         roommates,
         postits,
         solidarity,
-        resources,
+        level,
+        xp,
+        xpNeeded,
+        levelUpPending,
+        setLevelUpPending,
         upgrades,
         stateTimer,
         logs,
@@ -840,15 +784,14 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         balloons,
         doubleSpeedRemaining,
         victory,
-        gameOver,
         spawnPostit,
         assignColoc,
         unassignColoc,
         buyUpgrade,
-        secureRoommate,
         clickBalloon,
         addLog,
         resetGame,
+        getColocSkillsDynamic,
       }}
     >
       {children}
