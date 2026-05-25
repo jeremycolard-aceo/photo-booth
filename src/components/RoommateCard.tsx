@@ -9,8 +9,9 @@ interface RoommatesRowProps {
 }
 
 export const RoommatesRow: React.FC<RoommatesRowProps> = ({ selectedColocId, onSelectColoc }) => {
-  const { roommates, stateTimer, getColocSkillsDynamic } = useGame();
+  const { roommates, stateTimer, getColocSkillsDynamic, assignColoc } = useGame();
   const [activeModalColoc, setActiveModalColoc] = useState<Roommate | null>(null);
+  const [touchColocId, setTouchColocId] = useState<string | null>(null);
 
   // Format global timer (same for everyone)
   const formatTimer = (mins: number) => {
@@ -21,6 +22,34 @@ export const RoommatesRow: React.FC<RoommatesRowProps> = ({ selectedColocId, onS
 
   const handleDragStart = (e: React.DragEvent, colocId: string) => {
     e.dataTransfer.setData('colocId', colocId);
+  };
+
+  const handleTouchStart = (colocId: string) => {
+    setTouchColocId(colocId);
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (!touchColocId) return;
+    const touch = e.changedTouches[0];
+    const x = touch.clientX;
+    const y = touch.clientY;
+    
+    // Find elements under touch coordinate
+    let el = document.elementFromPoint(x, y);
+    let postitId: string | null = null;
+    while (el) {
+      const id = el.getAttribute('data-postit-id');
+      if (id) {
+        postitId = id;
+        break;
+      }
+      el = el.parentElement;
+    }
+
+    if (postitId) {
+      assignColoc(touchColocId, postitId);
+    }
+    setTouchColocId(null);
   };
 
   // Skill labels metadata for roomie skills line
@@ -35,10 +64,11 @@ export const RoommatesRow: React.FC<RoommatesRowProps> = ({ selectedColocId, onS
   return (
     <div className="w-full">
       {/* Roommates Row Grid */}
-      <div className="grid grid-cols-4 gap-1.5 px-1 py-1 rounded-2xl glass-panel border border-white/5">
+      <div className="grid grid-cols-3 gap-1.5 px-1 py-1 rounded-2xl glass-panel border border-white/5">
         {roommates.map((coloc) => {
           const isSelected = selectedColocId === coloc.id;
           const isWorking = coloc.assignedPostitId !== null;
+          const isBeingTouched = touchColocId === coloc.id;
           
           // Get dynamic skills affected by active crises (malus) or weekly meetings (bonus)
           const dynamicStats = getColocSkillsDynamic(coloc);
@@ -48,13 +78,15 @@ export const RoommatesRow: React.FC<RoommatesRowProps> = ({ selectedColocId, onS
               key={coloc.id}
               draggable="true"
               onDragStart={(e) => handleDragStart(e, coloc.id)}
+              onTouchStart={() => handleTouchStart(coloc.id)}
+              onTouchEnd={handleTouchEnd}
               onClick={() => {
                 // Toggle selection for tap-to-assign
                 onSelectColoc(isSelected ? null : coloc.id);
               }}
               className={`flex flex-col items-center py-2 px-0.5 rounded-xl relative cursor-pointer select-none transition-all duration-200 active:scale-95 ${
-                isSelected
-                  ? 'bg-purple-500/20 border-2 border-purple-500 scale-105 shadow-[0_0_15px_rgba(168,85,247,0.3)]'
+                isSelected || isBeingTouched
+                  ? 'bg-purple-500/25 border-2 border-purple-500 scale-105 shadow-[0_0_15px_rgba(168,85,247,0.4)] z-10 animate-pulse'
                   : isWorking
                   ? 'bg-slate-900/40 border border-slate-700/50'
                   : 'bg-slate-900/80 border border-white/5 hover:border-slate-700'

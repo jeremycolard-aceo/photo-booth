@@ -7,10 +7,11 @@ interface PostitCardProps {
   postit: Postit;
   selectedColocId: string | null;
   onSelectColoc: (id: string | null) => void;
+  index: number;
 }
 
-export const PostitCard: React.FC<PostitCardProps> = ({ postit, selectedColocId, onSelectColoc }) => {
-  const { roommates, assignColoc, unassignColoc, upgrades, doubleSpeedRemaining, happiness, getColocSkillsDynamic } = useGame();
+export const PostitCard: React.FC<PostitCardProps> = ({ postit, selectedColocId, onSelectColoc, index }) => {
+  const { roommates, assignColoc, unassignColoc, upgrades, doubleSpeedRemaining, happiness, getColocSkillsDynamic, swapPostits } = useGame();
 
   const isXL = upgrades.find((u) => u.id === 'tableauXL')?.purchased;
   const hasFibre = upgrades.find((u) => u.id === 'fibreOptique')?.purchased;
@@ -33,7 +34,7 @@ export const PostitCard: React.FC<PostitCardProps> = ({ postit, selectedColocId,
 
   const effectiveSpeed = sumSkills * speedPenalty * doubleSpeedMultiplier;
 
-  // Drag-and-drop
+  // Drag-and-drop roommates
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
   };
@@ -41,9 +42,20 @@ export const PostitCard: React.FC<PostitCardProps> = ({ postit, selectedColocId,
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     const colocId = e.dataTransfer.getData('colocId');
+    const fromPostitIndexStr = e.dataTransfer.getData('postitIndex');
+    
     if (colocId) {
       assignColoc(colocId, postit.id);
+    } else if (fromPostitIndexStr) {
+      const fromIndex = parseInt(fromPostitIndexStr, 10);
+      if (fromIndex !== index) {
+        swapPostits(fromIndex, index);
+      }
     }
+  };
+
+  const handlePostitDragStart = (e: React.DragEvent) => {
+    e.dataTransfer.setData('postitIndex', index.toString());
   };
 
   // Tap-to-assign slot
@@ -56,24 +68,44 @@ export const PostitCard: React.FC<PostitCardProps> = ({ postit, selectedColocId,
 
   return (
     <div
+      draggable="true"
+      onDragStart={handlePostitDragStart}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
       onClick={selectedColocId ? handleSlotClick : undefined}
+      data-postit-id={postit.id}
       className={`postit-paper ${postit.colorClass} select-none relative p-2 flex flex-col justify-between ${
         selectedColocId 
           ? 'ring-2 ring-purple-600/50 scale-102 cursor-pointer shadow-lg' 
           : ''
       }`}
     >
+      {/* Giant Watermark Emoji in Center */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-7xl opacity-15 pointer-events-none select-none font-bold">
+        {postit.type === 'finance' ? '💶' : postit.type === 'sante' ? '💪' : postit.type === 'reseau' ? '🤝' : postit.type === 'droits' ? '⚖️' : '🚀'}
+      </div>
+
       {/* 1. Title (Extremely compact text-sm/text-base Caveat handwriting style) */}
-      <div className="w-full text-center mt-0.5">
+      <div className="w-full text-center mt-0.5 flex flex-col items-center z-10">
         <h3 className="text-sm font-black tracking-tight leading-none line-clamp-2 px-0.5 select-none text-slate-900">
           {postit.title}
         </h3>
+        
+        {/* Aggressive Crisis Indicators */}
+        {postit.urgency === 'orange' && (
+          <span className="text-[10px] text-amber-900 font-extrabold uppercase tracking-wider animate-pulse mt-0.5 bg-amber-600/10 px-1 py-0.2 rounded border border-amber-600/20 select-none">
+            😡 -1 {postit.type === 'finance' ? '💶' : postit.type === 'sante' ? '💪' : postit.type === 'reseau' ? '🤝' : postit.type === 'droits' ? '⚖️' : '🚀'}
+          </span>
+        )}
+        {postit.urgency === 'rouge' && (
+          <span className="text-[10px] text-rose-950 font-extrabold uppercase tracking-wider animate-pulse mt-0.5 bg-red-600/15 px-1 py-0.2 rounded border border-red-600/30 select-none">
+            🤬 -2 {postit.type === 'finance' ? '💶' : postit.type === 'sante' ? '💪' : postit.type === 'reseau' ? '🤝' : postit.type === 'droits' ? '⚖️' : '🚀'}
+          </span>
+        )}
       </div>
 
       {/* 2. Roommates avatars assigned (Compact w-7 h-7 circles for mobile!) */}
-      <div className="flex justify-center items-center gap-2 my-1">
+      <div className="flex justify-center items-center gap-2 my-1 z-10">
         {/* Slot 1 */}
         {assignedRoommates[0] ? (
           <div className="w-7 h-7 rounded-full bg-black/15 hover:bg-black/25 flex items-center justify-center text-lg relative group shadow-inner flex-shrink-0">
@@ -128,7 +160,7 @@ export const PostitCard: React.FC<PostitCardProps> = ({ postit, selectedColocId,
       </div>
 
       {/* Footer details */}
-      <div className="w-full mt-auto">
+      <div className="w-full mt-auto z-10">
         {/* 3. Progress Bar (Extremely fine h-1 horizontal marker line) */}
         <div className="w-full h-1 bg-black/15 rounded-full overflow-hidden border border-black/5 relative mb-1">
           <div
@@ -137,12 +169,12 @@ export const PostitCard: React.FC<PostitCardProps> = ({ postit, selectedColocId,
           />
         </div>
 
-        {/* 4. Multiplier Badge (Compact text-[10px]) */}
+        {/* 4. Multiplier Badge (Larger and bold as requested) */}
         <div className="flex justify-between items-center text-[10px] font-black px-0.5 select-none leading-none">
           <span className="opacity-70 leading-none">
             {postit.type === 'finance' ? '💶' : postit.type === 'sante' ? '💪' : postit.type === 'reseau' ? '🤝' : postit.type === 'droits' ? '⚖️' : '🚀'}
           </span>
-          <span className="bg-black/15 px-1 rounded font-black shadow-sm leading-none py-0.5">
+          <span className="bg-black/20 px-1.5 py-0.5 rounded font-black shadow-sm leading-none text-xs text-slate-950">
             {effectiveSpeed > 0 ? `x${effectiveSpeed.toFixed(0)}` : 'x0'}
           </span>
         </div>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { GameProvider, useGame } from './context/GameContext';
 import { StatsBar } from './components/StatsBar';
 import { RoommatesRow } from './components/RoommateCard';
@@ -17,11 +17,35 @@ const AppInner: React.FC = () => {
     solidarity,
     level,
     levelUpPending,
-    setLevelUpPending
+    setLevelUpPending,
+    swapPostits
   } = useGame();
 
   const [selectedColocId, setSelectedColocId] = useState<string | null>(null);
   const [isShopOpen, setIsShopOpen] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const handleInstallApp = async () => {
+    if (!deferredPrompt) return;
+    playClickSound();
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    console.log(`User response to PWA install prompt: ${outcome}`);
+    setDeferredPrompt(null);
+  };
 
   const handleOpenShop = () => {
     playClickSound();
@@ -58,6 +82,7 @@ const AppInner: React.FC = () => {
                   postit={postit}
                   selectedColocId={selectedColocId}
                   onSelectColoc={setSelectedColocId}
+                  index={index}
                 />
               );
             } else {
@@ -65,6 +90,15 @@ const AppInner: React.FC = () => {
               return (
                 <div
                   key={`empty-slot-${index}`}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const fromPostitIndexStr = e.dataTransfer.getData('postitIndex');
+                    if (fromPostitIndexStr) {
+                      const fromIndex = parseInt(fromPostitIndexStr, 10);
+                      swapPostits(fromIndex, index);
+                    }
+                  }}
                   className="w-full aspect-square min-h-[165px] max-h-[180px] rounded-2xl border border-dashed border-white/5 bg-slate-900/10 flex flex-col items-center justify-center p-3 select-none"
                 >
                   <span className="text-[15px] font-handwritten opacity-10">Coloc vide</span>
@@ -95,6 +129,18 @@ const AppInner: React.FC = () => {
           </div>
         </div>
       ))}
+
+      {/* FLOATING PWA INSTALL BUTTON */}
+      {deferredPrompt && (
+        <button
+          onClick={handleInstallApp}
+          className="fixed bottom-4 left-4 z-50 flex items-center gap-1.5 px-3.5 py-3 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white font-extrabold text-sm rounded-full shadow-[0_0_15px_rgba(16,185,129,0.5)] border border-emerald-400/30 hover:scale-105 active:scale-95 transition-all animate-bounce"
+          title="Installer l'application sur l'écran d'accueil"
+        >
+          <span className="text-lg leading-none">📲</span>
+          <span className="hidden sm:inline uppercase tracking-wider text-xs">Installer</span>
+        </button>
+      )}
 
       {/* FLOATING ACTION TOOLBOX SHOP BUTTON (🧰) */}
       <button

@@ -5,10 +5,21 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Un jeu incrémental mobile-first de gestion de colocation solidaire. Aidez Marc, Lisa, Nico et Marie à compléter leurs dossiers administratifs de survie !" />
+    <link rel="manifest" href="/photo-booth/manifest.json" />
+    <meta name="theme-color" content="#7c3aed" />
     <title>Coloc Solidaire - Jeu d'Entraide Sociale</title>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/photo-booth/sw.js')
+            .then(reg => console.log('Service Worker registered successfully with scope:', reg.scope))
+            .catch(err => console.error('Service Worker registration failed:', err));
+        });
+      }
+    </script>
   </body>
 </html>

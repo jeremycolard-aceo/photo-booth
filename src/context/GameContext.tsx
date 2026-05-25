@@ -75,6 +75,7 @@ export interface GameContextType {
   clickBalloon: (id: string) => void;
   addLog: (text: string, type?: LogEntry['type']) => void;
   resetGame: () => void;
+  swapPostits: (fromIndex: number, toIndex: number) => void;
   getColocSkillsDynamic: (coloc: Roommate) => {
     finance: number;
     sante: number;
@@ -95,7 +96,7 @@ const INITIAL_ROOMMATES: Roommate[] = [
     id: 'marc',
     name: 'Marc',
     age: 45,
-    avatar: '👨',
+    avatar: '🧔',
     role: 'L\'Exilé Courageux',
     description: 'Marc, 45 ans. Ancien chef cuisinier ayant fui son pays en crise. Courageux et digne, il passe ses nuits à étudier le français tout en aidant bénévolement à la banque alimentaire du quartier.',
     dossierName: 'Dossier de régularisation administrative',
@@ -106,7 +107,7 @@ const INITIAL_ROOMMATES: Roommate[] = [
     id: 'lisa',
     name: 'Lisa',
     age: 22,
-    avatar: '👩🎓',
+    avatar: '👩',
     role: 'L\'Étudiante Solaire',
     description: 'Lisa, 22 ans. Étudiante en sociologie originaire d\'une famille modeste. Elle cumule la livraison de repas à vélo, le baby-sitting et le tutorat. Épuisée mais rayonnante de sociabilité, elle rêve de monter une coopérative d\'entraide étudiante.',
     dossierName: 'Bourse d\'étude échelon 7',
@@ -117,7 +118,7 @@ const INITIAL_ROOMMATES: Roommate[] = [
     id: 'nico',
     name: 'Nico',
     age: 34,
-    avatar: '👨🦽',
+    avatar: '👨',
     role: 'L\'Ex-Juriste Résilient',
     description: 'Nico, 34 ans. Ancien juriste d\'affaires devenu tétraplégique suite à un accident de sport. Expert des rouages administratifs et doté d\'un humour pince-sans-rire, il consacre son temps libre à conseiller juridiquement les familles précaires du quartier.',
     dossierName: 'Reconnaissance Invalidité (AAH)',
@@ -367,34 +368,37 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const spawnInitialPostits = () => {
     const list: (Postit | null)[] = [null, null, null, null, null, null];
-    const pool1 = POSTITS_POOL.find(p => p.type === 'finance')!;
-    const pool2 = POSTITS_POOL.find(p => p.type === 'reseau')!;
+    const rotations = ['rotate-coloc-1', 'rotate-coloc-2', 'rotate-coloc-3', 'rotate-coloc-4'];
     
-    list[0] = {
-      id: `postit-${Date.now()}-1`,
-      title: pool1.title,
-      type: pool1.type,
-      icon: pool1.icon,
-      colorClass: 'postit-jaune rotate-coloc-1 glow-yellow',
-      progress: 0,
-      elapsedTime: 0,
-      urgency: 'jaune',
-      assignedColocs: [],
-    };
-    
-    list[1] = {
-      id: `postit-${Date.now()}-2`,
-      title: pool2.title,
-      type: pool2.type,
-      icon: pool2.icon,
-      colorClass: 'postit-jaune rotate-coloc-2 glow-yellow',
-      progress: 0,
-      elapsedTime: 0,
-      urgency: 'jaune',
-      assignedColocs: [],
-    };
+    for (let i = 0; i < 5; i++) {
+      const randomIndex = Math.floor(Math.random() * POSTITS_POOL.length);
+      const item = POSTITS_POOL[randomIndex];
+      const randomRotation = rotations[Math.floor(Math.random() * rotations.length)];
+      
+      list[i] = {
+        id: `postit-${Date.now()}-${i}-${Math.floor(Math.random() * 1000)}`,
+        title: item.title,
+        type: item.type,
+        icon: item.icon,
+        colorClass: `postit-jaune ${randomRotation} glow-yellow`,
+        progress: 0,
+        elapsedTime: 0,
+        urgency: 'jaune',
+        assignedColocs: [],
+      };
+    }
     setPostits(list);
   };
+
+  const swapPostits = useCallback((fromIndex: number, toIndex: number) => {
+    setPostits((prev) => {
+      const next = [...prev];
+      const temp = next[fromIndex];
+      next[fromIndex] = next[toIndex];
+      next[toIndex] = temp;
+      return next;
+    });
+  }, []);
 
   // Helper: Spawn a single random post-it into the first empty slot
   const spawnPostit = useCallback(() => {
@@ -767,6 +771,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         clickBalloon,
         addLog,
         resetGame,
+        swapPostits,
         getColocSkillsDynamic,
       }}
     >
