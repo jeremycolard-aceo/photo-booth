@@ -8,9 +8,16 @@ interface UpgradesShopProps {
 }
 
 export const UpgradesShop: React.FC<UpgradesShopProps> = ({ isOpen, onClose }) => {
-  const { upgrades, solidarity, buyUpgrade } = useGame();
+  const { upgrades, solidarity, buyUpgrade, resetGame } = useGame();
 
   if (!isOpen) return null;
+
+  const handleReset = () => {
+    if (window.confirm('Voulez-vous vraiment réinitialiser entièrement la colocation ?')) {
+      resetGame();
+      onClose();
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
@@ -109,13 +116,22 @@ export const UpgradesShop: React.FC<UpgradesShopProps> = ({ isOpen, onClose }) =
           })}
         </div>
 
-        {/* Footer */}
-        <button
-          onClick={onClose}
-          className="w-full py-2.5 bg-slate-900 hover:bg-slate-850 border border-white/5 text-slate-300 hover:text-slate-200 rounded-xl text-xs font-black transition-all mt-2"
-        >
-          Retour au Tableau
-        </button>
+        {/* Footer Buttons */}
+        <div className="flex flex-col gap-2 mt-2">
+          <button
+            onClick={onClose}
+            className="w-full py-2.5 bg-slate-900 hover:bg-slate-850 border border-white/5 text-slate-300 hover:text-slate-200 rounded-xl text-xs font-black transition-all"
+          >
+            Retour au Tableau
+          </button>
+          
+          <button
+            onClick={handleReset}
+            className="w-full py-1.5 bg-rose-950/15 hover:bg-rose-950/30 border border-rose-900/30 text-rose-400 rounded-xl text-[10px] font-bold transition-all"
+          >
+            ⚠️ Réinitialiser la Coloc (Reset)
+          </button>
+        </div>
 
       </div>
     </div>
